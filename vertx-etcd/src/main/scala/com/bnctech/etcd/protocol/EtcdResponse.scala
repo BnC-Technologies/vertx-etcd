@@ -1,7 +1,7 @@
 package com.bnctech.etcd.protocol
 
 /**
-  * TODO
+  * POJO representing the response from etcd
   */
 class EtcdResponse {
   private var action: String = _

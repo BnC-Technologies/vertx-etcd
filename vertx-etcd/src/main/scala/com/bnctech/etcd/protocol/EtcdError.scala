@@ -1,6 +1,7 @@
 package com.bnctech.etcd.protocol
+
 /**
-  * TODO
+  * POJO representing the etcd error json
   */
 class EtcdError {
   private var errorCode:Int = 0

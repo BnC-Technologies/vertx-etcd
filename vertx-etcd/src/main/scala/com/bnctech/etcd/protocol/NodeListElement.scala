@@ -2,7 +2,7 @@ package com.bnctech.etcd.protocol
 import java.util
 
 /**
-  * TODO
+  * POJO representing the node list from etcd
   */
 class NodeListElement {
   private var key:String = _

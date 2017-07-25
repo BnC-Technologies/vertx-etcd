@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import com.bnctech.etcd.exceptions.EtcdErrorException
 import com.bnctech.etcd.protocol.{EtcdError, EtcdResponse}
 import com.bnctech.etcd.utils.Converter.convertStringToObject
+import io.vertx.core.eventbus.DeliveryOptions
 import io.vertx.core.http.{HttpClient, HttpClientResponse, HttpMethod}
 import io.vertx.core.json.{Json, JsonObject}
 import io.vertx.core.{AsyncResult, Future, Handler, Vertx}
@@ -23,29 +24,28 @@ import scala.util.{Failure, Success, Try}
   */
 class Watcher(private val httpClient: HttpClient,
               private val key: String,
-              private val waitIndex: Option[Long] = None,
+              private val waitIndex: Option[Long],
               private val recursive: Boolean,
               private val vertx: Vertx) {
   private val eventBus = vertx.eventBus()
   private val etcdClientLongPollingEventbusAddress = s"etcdclient-polling-${UUID.randomUUID().toString}"
-  private val localConsumer = eventBus.localConsumer[AnyRef](etcdClientLongPollingEventbusAddress)
+  private val localConsumer = eventBus.localConsumer[JsonObject](etcdClientLongPollingEventbusAddress)
   private var timer: Long = -1
   private val isRunning = new AtomicBoolean(false)
+  private val sendOptions = new DeliveryOptions().addHeader("exception", "true")
 
   private def watch(handler: Handler[AsyncResult[EtcdResponse]]): Unit = {
     localConsumer handler {
       message =>
         isRunning.set(false)
-        message.body match {
-          case json: JsonObject => handler handle Future.succeededFuture(Json.decodeValue(json.encode(), classOf[EtcdResponse]))
-          case exception: Exception =>
-            stop()
-            handler handle Future.failedFuture(exception)
-        }
-
+        val json = message.body
+        if (message.headers().contains("exception")) {
+          stop()
+          handler handle Future.failedFuture(Json.decodeValue(json.encode(), classOf[Exception]))
+        } else
+          handler handle Future.succeededFuture(Json.decodeValue(json.encode(), classOf[EtcdResponse]))
     }
     timer = vertx.setPeriodic(500, _ => timerHandler())
-    //ScalaFuture will create a new thread and it will not block the main thread
   }
 
   private def timerHandler() = {
@@ -56,10 +56,10 @@ class Watcher(private val httpClient: HttpClient,
         override def handle(httpClientResponse: HttpClientResponse): Unit = {
           httpClientResponse.bodyHandler(buffer => {
             if (httpClientResponse.statusCode() != 200) {
-              eventBus.send(etcdClientLongPollingEventbusAddress, (Try {
+              eventBus.send(etcdClientLongPollingEventbusAddress, new JsonObject(Json.encode((Try {
                 val etcdError = Json.decodeValue(buffer.toString(), classOf[EtcdError])
                 new EtcdErrorException(etcdError)
-              } recover { case e: Exception => e }).get)
+              } recover { case e: Exception => e }).get)), sendOptions)
             } else {
               Try {
                 val response = Json.decodeValue(buffer.toJsonObject.encode, classOf[EtcdResponse])
@@ -70,7 +70,7 @@ class Watcher(private val httpClient: HttpClient,
               } match {
                 case Success(response) =>
                   eventBus.send(etcdClientLongPollingEventbusAddress, new JsonObject(Json.encode(response)))
-                case Failure(e) => eventBus.send(etcdClientLongPollingEventbusAddress, e)
+                case Failure(e) => eventBus.send(etcdClientLongPollingEventbusAddress, new JsonObject(Json.encode(e)), sendOptions)
               }
             }
           })
@@ -93,7 +93,7 @@ class Watcher(private val httpClient: HttpClient,
   def stop(): Unit = {
     isRunning.set(false)
     localConsumer.unregister()
-    if (timer > -1) vertx cancelTimer timer
+    vertx cancelTimer timer
     httpClient.close()
   }
 }

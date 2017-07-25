@@ -1,4 +1,4 @@
-package com.bnctech.etcd
+package com.bnctech.scala.etcd
 
 import org.scalatest.mockito.MockitoSugar
 import org.scalatest.{AsyncWordSpec, BeforeAndAfter, Matchers, WordSpec}

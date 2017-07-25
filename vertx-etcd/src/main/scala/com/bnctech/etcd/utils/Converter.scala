@@ -13,9 +13,16 @@ import scala.collection.JavaConverters._
 import scala.util.Try
 
 /**
-  * Created by fjim on 06/03/2017.
+  * Static uril methods for converting stuffs
   */
 private[etcd] object Converter {
+  /**
+    * Methods that convert the buffer to [[EtcdErrorException]]
+    *
+    * @param handler Handler handling the answer
+    * @param buffer  Buffer containing the error
+    * @tparam T Type of the [[AsyncResult]]
+    */
   def handleError[T](handler: Handler[AsyncResult[T]], buffer: Buffer): Unit = {
     handler handle Future.failedFuture((Try {
       val etcdError = Json.decodeValue(buffer.toString(), classOf[EtcdError])
@@ -23,6 +30,14 @@ private[etcd] object Converter {
     } recover { case e: Exception => e }).get)
   }
 
+  /**
+    * Convert a String to an object.
+    * Try successively to convert to Long, Double, Boolean.
+    * If any of those fail return the string
+    *
+    * @param str String to convert
+    * @return The converted value
+    */
   def convertStringToObject(str: String): AnyRef =
     Try(str.toLong)
       .getOrElse(
@@ -34,6 +49,11 @@ private[etcd] object Converter {
       )
       .asInstanceOf[AnyRef]
 
+  /**
+    * Convert recursively the value from [[NodeListElement]]
+    *
+    * @param nodeListElement Node list to convert from
+    */
   def convertListElement(nodeListElement: NodeListElement): Unit = {
     @tailrec
     def recursive(list: Iterable[NodeListElement]): Unit = list match {

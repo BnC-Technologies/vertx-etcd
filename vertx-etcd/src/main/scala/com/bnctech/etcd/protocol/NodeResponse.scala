@@ -1,7 +1,7 @@
 package com.bnctech.etcd.protocol
 
 /**
-  * TODO
+  * POJO representing the node from etcd
   */
 class NodeResponse {
   private var key: String = _
@@ -10,7 +10,7 @@ class NodeResponse {
   private var createdIndex: Int = 0
   private var ttl: Int = 0
   private var expiration: String = _
-  private var dir:Boolean = false
+  private var dir: Boolean = false
 
   def getKey: String = key
 

@@ -1,4 +1,4 @@
-package com.bnctech.etcd
+package com.bnctech.scala.etcd
 
 import java.util
 
@@ -6,8 +6,10 @@ import com.bnctech.etcd.exceptions.EtcdErrorException
 import com.bnctech.etcd.protocol._
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.http._
-import io.vertx.core.json.{DecodeException, Json}
-import io.vertx.core.{AsyncResult, Handler, Vertx}
+import io.vertx.core.json.Json
+import io.vertx.core.{AsyncResult, Handler, Vertx => JVertx}
+import io.vertx.lang.scala.VertxExecutionContext
+import io.vertx.scala.core.Vertx
 import org.mockito.Matchers.any
 import org.mockito.Mockito.{doAnswer, doReturn, spy, when}
 
@@ -22,6 +24,7 @@ class EtcdClientSpec extends BaseTest {
   private var httpClientResponse: HttpClientResponse = _
   private var httpClientRequest: HttpClientRequest = _
   private implicit val vertx = spy(Vertx.vertx)
+  private implicit val ctx = VertxExecutionContext(vertx.getOrCreateContext())
 
   private def convertHandlerToFuture[T](promise: Promise[T])(result: AsyncResult[T]): Unit = {
     if (result.failed)
@@ -40,58 +43,28 @@ class EtcdClientSpec extends BaseTest {
       httpClientRequest
     }) when httpClient request(any[HttpMethod], any[String], any(classOf[Handler[HttpClientResponse]]))
     doReturn(httpClientRequest) when httpClientRequest putHeader("Content-Type", "application/x-www-form-urlencoded")
-    doReturn(httpClient) when vertx createHttpClient any[HttpClientOptions]
+    val jVertx = spy(JVertx.vertx)
+    doReturn(httpClient) when jVertx createHttpClient any[HttpClientOptions]
+    doReturn(jVertx).when(vertx).asJava
     etcdClient = new EtcdClient("127.0.0.1", 2789, vertx)
   }
-  "EtcdResponse" should {
-    "fail" when {
-      "The json retrieved is not valid" in {
-        httpClientResponseBodyHandlerError
-        recoverToSucceededIf[DecodeException] {
-          val promise = Promise[EtcdResponse]
-          etcdClient.delete("key1", convertHandlerToFuture(promise))
-          promise.future
-        }
-      }
-      "It's not a directory" in {
-        when(httpClientResponse.statusCode) thenReturn 400
-        httpClientResponseBodyHandlerError
-        recoverToSucceededIf[EtcdErrorException] {
-          val promise = Promise[EtcdResponse]
-          etcdClient.get("key1", convertHandlerToFuture(promise))
-          promise.future
-        }
-      }
-    }
-  }
-  "EtcdListResponse" should {
-    "fail" when {
-      "The json retrieved is not valid" in {
-        httpClientResponseBodyHandlerError
-        recoverToSucceededIf[DecodeException] {
-          val promise = Promise[EtcdListResponse]
-          etcdClient.createDir("key1", convertHandlerToFuture(promise))
-          promise.future
-        }
-      }
-      "It's not a directory" in {
-        httpClientResponseBodyHandlerError
-        when(httpClientResponse.statusCode) thenReturn 400
-        recoverToSucceededIf[EtcdErrorException] {
-          val promise = Promise[EtcdListResponse]
-          etcdClient.createDir("key1", convertHandlerToFuture(promise))
-          promise.future
-        }
-      }
-    }
-  }
+
+  private val etcdKey = "key1"
   "get" should {
-    "success" in {
-      val promise = Promise[EtcdResponse]
-      httpClientResponseBodyHandlerKeySuccess
-      etcdClient.get("key1", convertHandlerToFuture(promise))
-      promise.future map {
-        result => result.getNode.getValue shouldBe 12.3
+    "success" when {
+      "use callback style" in {
+        val promise = Promise[EtcdResponse]
+        httpClientResponseBodyHandlerKeySuccess
+        etcdClient.get(etcdKey, convertHandlerToFuture(promise))
+        promise.future map {
+          result => result.getNode.getValue shouldBe 12.3
+        }
+      }
+      "use future" in {
+        httpClientResponseBodyHandlerKeySuccess
+        etcdClient.getFuture(etcdKey) map {
+          result => result.getNode.getValue shouldBe 12.3
+        }
       }
     }
     "fail" when {
@@ -100,18 +73,31 @@ class EtcdClientSpec extends BaseTest {
         when(httpClientResponse.statusCode) thenReturn 501
         recoverToSucceededIf[EtcdErrorException] {
           val promise = Promise[EtcdResponse]
-          etcdClient.get("key1", convertHandlerToFuture(promise))
+          etcdClient.get(etcdKey, convertHandlerToFuture(promise))
           promise.future
+        }
+      }
+      "use future" in {
+        httpClientResponseBodyHandlerError
+        when(httpClientResponse.statusCode) thenReturn 501
+        recoverToSucceededIf[EtcdErrorException] {
+          etcdClient.getFuture(etcdKey)
         }
       }
     }
   }
   "set" should {
     "success" when {
+      "use future" in {
+        httpClientResponseBodyHandlerKeySuccess
+        etcdClient.setFuture(etcdKey, 12.3) map {
+          result => result.getNode.getValue shouldBe 12.3
+        }
+      }
       "ttl is set" in {
         httpClientResponseBodyHandlerKeySuccess
         val promise = Promise[EtcdResponse]
-        etcdClient.set("key1", 12.3, 1, convertHandlerToFuture(promise))
+        etcdClient.set(etcdKey, 12.3, Option(1), convertHandlerToFuture(promise))
         promise.future map {
           result => result.getNode.getValue shouldBe 12.3
         }
@@ -119,7 +105,7 @@ class EtcdClientSpec extends BaseTest {
       "ttl is not set" in {
         httpClientResponseBodyHandlerKeySuccess
         val promise = Promise[EtcdResponse]
-        etcdClient.set("key1", 12.3, convertHandlerToFuture(promise))
+        etcdClient.set(etcdKey, 12.3, handler = convertHandlerToFuture(promise))
         promise.future map {
           result => result.getNode.getValue shouldBe 12.3
         }
@@ -127,12 +113,20 @@ class EtcdClientSpec extends BaseTest {
     }
   }
   "delete" should {
-    "success" in {
-      httpClientResponseBodyHandlerKeySuccess
-      val promise = Promise[EtcdResponse]
-      etcdClient.delete("key1", convertHandlerToFuture(promise))
-      promise.future map {
-        result => result.getNode.getKey shouldBe "key1"
+    "success" when {
+      "use callback style" in {
+        httpClientResponseBodyHandlerKeySuccess
+        val promise = Promise[EtcdResponse]
+        etcdClient.delete(etcdKey, convertHandlerToFuture(promise))
+        promise.future map {
+          result => result.getNode.getKey shouldBe etcdKey
+        }
+      }
+      "use future" in {
+        httpClientResponseBodyHandlerKeySuccess
+        etcdClient.deleteFuture(etcdKey) map {
+          result => result.getNode.getKey shouldBe etcdKey
+        }
       }
     }
     "fail" when {
@@ -141,7 +135,7 @@ class EtcdClientSpec extends BaseTest {
         httpClientResponseBodyHandlerError
         recoverToSucceededIf[EtcdErrorException] {
           val promise = Promise[EtcdResponse]
-          etcdClient.delete("key1", convertHandlerToFuture(promise))
+          etcdClient.delete(etcdKey, convertHandlerToFuture(promise))
           promise.future
         }
       }
@@ -149,10 +143,16 @@ class EtcdClientSpec extends BaseTest {
   }
   "listDir" should {
     "success" when {
+      "use future" in {
+        httpClientResponseBodyHandlerDirSuccess
+        etcdClient.listDirFuture(etcdKey) map {
+          result => result.getNode.getValue shouldBe "value"
+        }
+      }
       "recursive is set" in {
         httpClientResponseBodyHandlerDirSuccess
         val promise = Promise[EtcdListResponse]
-        etcdClient.listDir("key1", true, convertHandlerToFuture(promise))
+        etcdClient.listDir(etcdKey, Some(true), convertHandlerToFuture(promise))
         promise.future map {
           result => result.getNode.getValue shouldBe "value"
         }
@@ -160,7 +160,7 @@ class EtcdClientSpec extends BaseTest {
       "recursive is not set" in {
         httpClientResponseBodyHandlerDirSuccess
         val promise = Promise[EtcdListResponse]
-        etcdClient.listDir("key1", convertHandlerToFuture(promise))
+        etcdClient.listDir(etcdKey, handler = convertHandlerToFuture(promise))
         promise.future map {
           result => result.getNode.getValue shouldBe "value"
         }
@@ -168,63 +168,55 @@ class EtcdClientSpec extends BaseTest {
     }
   }
   "createDir" should {
-    "success" in {
-      httpClientResponseBodyHandlerDirSuccess
-      val promise = Promise[EtcdListResponse]
-      etcdClient.createDir("key1", convertHandlerToFuture(promise))
-      promise.future map {
-        result => result.getNode.getDir shouldBe true
+    "success" when {
+      "use callback style" in {
+        httpClientResponseBodyHandlerDirSuccess
+        val promise = Promise[EtcdListResponse]
+        etcdClient.createDir(etcdKey, convertHandlerToFuture(promise))
+        promise.future map {
+          result => result.getNode.getDir shouldBe true
+        }
+      }
+      "use future" in {
+        httpClientResponseBodyHandlerDirSuccess
+        etcdClient.createDirFuture(etcdKey) map {
+          result => result.getNode.getDir shouldBe true
+        }
       }
     }
   }
   "deleteDir" should {
     "success" when {
+      "use future" in {
+        httpClientResponseBodyHandlerKeySuccess
+        etcdClient.deleteDirFuture(etcdKey) map {
+          result => result.getNode.getKey shouldBe etcdKey
+        }
+      }
       "recursive is set" in {
         httpClientResponseBodyHandlerKeySuccess
         val promise = Promise[EtcdResponse]
-        etcdClient.deleteDir("key1", true, convertHandlerToFuture[EtcdResponse](promise))
+        etcdClient.deleteDir(etcdKey, Some(true), convertHandlerToFuture[EtcdResponse](promise))
         promise.future map {
-          result => result.getNode.getKey shouldBe "key1"
+          result => result.getNode.getKey shouldBe etcdKey
         }
       }
       "recursive is not set" in {
         httpClientResponseBodyHandlerKeySuccess
         val promise = Promise[EtcdResponse]
-        etcdClient.deleteDir("key1", convertHandlerToFuture(promise))
+        etcdClient.deleteDir(etcdKey, handler = convertHandlerToFuture(promise))
         promise.future map {
-          result => result.getNode.getKey shouldBe "key1"
+          result => result.getNode.getKey shouldBe etcdKey
         }
       }
     }
   }
   "watch" should {
     "success" when {
-      "give all parameters" in {
-        httpClientResponseBodyHandlerKeySuccess
-        val promise = Promise[EtcdResponse]
-        val watcher = etcdClient.watch("key1", 0, false)
-        watcher.start(convertHandlerToFuture(promise))
-        promise.future map {
-          result =>
-            watcher.stop()
-            result.getNode should not be null
-        }
-      }
       "give the key and the waitIndex" in {
         httpClientResponseBodyHandlerKeySuccess
         val promise = Promise[EtcdResponse]
-        val watcher = etcdClient.watch("key1", 0)
-        watcher.start(convertHandlerToFuture(promise))
-        promise.future map {
-          result =>
-            watcher.stop()
-            result.getNode should not be null
-        }
-      }
-      "give the key and the recursive parameter" in {
-        httpClientResponseBodyHandlerKeySuccess
-        val promise = Promise[EtcdResponse]
-        val watcher = etcdClient.watch("key1", false)
+        val watcher = etcdClient.watch(etcdKey, Some(0))
         watcher.start(convertHandlerToFuture(promise))
         promise.future map {
           result =>
@@ -235,7 +227,7 @@ class EtcdClientSpec extends BaseTest {
       "just give the key" in {
         httpClientResponseBodyHandlerKeySuccess
         val promise = Promise[EtcdResponse]
-        val watcher = etcdClient.watch("key1")
+        val watcher = etcdClient.watch(etcdKey)
         watcher.start(convertHandlerToFuture(promise))
         promise.future map {
           result =>
@@ -250,7 +242,7 @@ class EtcdClientSpec extends BaseTest {
     val etcdResponse = new EtcdResponse()
     etcdResponse.setAction("delete")
     val nodeResponse = new NodeResponse
-    nodeResponse.setKey("key1")
+    nodeResponse.setKey(etcdKey)
     nodeResponse.setValue("12.3")
     nodeResponse.setCreatedIndex(0)
     nodeResponse.setModifiedIndex(0)
@@ -264,13 +256,13 @@ class EtcdClientSpec extends BaseTest {
     val nodeListElement = new NodeListElement
     val subNodeListElement = new NodeListElement
 
-    nodeListElement.setKey("key1")
+    nodeListElement.setKey(etcdKey)
     nodeListElement.setDir(true)
     nodeListElement.setValue("value")
     nodeListElement.setCreatedIndex(31)
     nodeListElement.setModifiedIndex(30)
 
-    subNodeListElement.setKey("subkey1")
+    subNodeListElement.setKey("sub" + etcdKey)
     subNodeListElement.setDir(false)
     subNodeListElement.setValue("subvalue1")
     subNodeListElement.setCreatedIndex(23)
@@ -288,7 +280,7 @@ class EtcdClientSpec extends BaseTest {
     val etcdResponse = new EtcdError
     etcdResponse.setErrorCode(100)
     etcdResponse.setMessage("subNodeListElement")
-    etcdResponse.setCause("/key1")
+    etcdResponse.setCause("/" + etcdKey)
     etcdResponse.setIndex(749)
     httpClientResponseBodyHandler(etcdResponse)
   }

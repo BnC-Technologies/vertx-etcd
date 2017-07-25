@@ -63,3 +63,39 @@ The current implementation does not work with secured etcd client (https).
 This feature will come in a future version
 
 # Usage
+
+## Java
+
+```java
+import com.bnctech.etcd.EtcdClient;
+public class Test {
+    public void test(){
+        EtcdClient client = new EtcdClient("127.0.1",2379,vertx); //Create a new client for the server on 127.0.0.1:2379
+       //Get the value from a key
+        client.get("myKey",response->{
+            if(response.failed()) {
+                //Something bad happened
+            }else {
+                response.result(); //The value
+            }
+        });
+        //Set a value for a key
+        client.set("myKey","myValue",response->{
+            if(response.failed()) {
+                //Something bad happened
+            }else {
+                response.result(); //The answer from server
+            }
+        });
+        //Delete a key
+        client.delete("myKey",response->{
+            if(response.failed()) {
+                //Something bad happened
+            }else {
+                response.result(); //The answer from server
+            }
+        });
+    }
+}
+
+```
