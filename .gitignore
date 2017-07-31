@@ -1,2 +1,8 @@
 *.class
 *.log
+.idea/
+*.iml
+target/
+*.vertx/
+/release.properties
+pom.xml.releaseBackup
