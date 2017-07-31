@@ -95,7 +95,66 @@ public class Test {
                 response.result(); //The answer from server
             }
         });
+        
+        Watcher watcher = client.watch("mykey");
+        watcher.start(response->{
+        		response.result(); //Result of the event captured
+        });
+        watcher.stop();
+        
+        //Create a directory
+        client.createDir("myKey",response->{
+            if(response.failed()) {
+                //Something bad happened
+            }else {
+                response.result(); //The answer from server
+            }
+        });
+        //List a directory recursively
+        client.listDir("myKey",true,response->{
+            if(response.failed()) {
+                //Something bad happened
+            }else {
+                response.result(); //The answer from server
+            }
+        });
+        //Delete a directory
+        client.deleteDir("myKey",response->{
+            if(response.failed()) {
+                //Something bad happened
+            }else {
+                response.result(); //The answer from server
+            }
+        });
     }
 }
+```
 
+## Scala
+
+```scala
+import com.bnctech.scala.etcd.EtcdClient
+class Test {
+    def test():Unit = {
+        val client = new EtcdClient("127.0.1",2379,vertx) //Create a new client for the server on 127.0.0.1:2379
+       //Get the value from a key as a future
+        client.getFuture("myKey")
+        //Set a value for a key as a future
+        client.setFuture("myKey","myValue")
+        //Delete a key as future
+        client.deleteFuture("myKey")
+        
+        val watcher = client.watch("mykey")
+        watcher.start(response =>
+        		response.result() //Result of the event captured
+        )
+        watcher.stop()
+        //Create a directory as future
+        client.createDirFuture("myKey")
+        //List a directory recursively as future
+        client.listDirFuture("myKey",Some(true))
+        //Delete a directory as future
+        client.deleteDir("myKey")
+    }
+}
 ```
