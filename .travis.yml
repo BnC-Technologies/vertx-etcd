@@ -2,7 +2,7 @@ language: scala
 jdk:
   - oraclejdk8
 install: true
-script: mvn clean source:jar scala:doc-jar deploy --settings travis/travis-settings.xml
+script: mvn clean scala:doc-jar deploy --settings travis/travis-settings.xml
 
 branches:
   only:
