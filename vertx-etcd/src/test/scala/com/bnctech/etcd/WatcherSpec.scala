@@ -112,6 +112,6 @@ class WatcherSpec extends BaseTest {
       val handler = invocation.getArguments()(0).asInstanceOf[Handler[Buffer]]
       handler.handle(Buffer.buffer(Json.encode(response)))
       httpClientResponse
-    }) when httpClientResponse bodyHandler any(classOf[Handler[Buffer]])
+    }).when(httpClientResponse).bodyHandler(any(classOf[Handler[Buffer]]))
   }
 }
